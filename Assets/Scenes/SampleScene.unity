@@ -418,9 +418,10 @@ MonoBehaviour:
   height: 10
   cellSize: 1
   itemPrefabs:
-  - {fileID: 417979051220161467, guid: d7f7eb9f31dc4465cba4241619d6d34a, type: 3}
-  - {fileID: 548521664184857624, guid: 5974f5a4cad834bfe9f871c8a4ee3cbd, type: 3}
-  - {fileID: 6156494926184565479, guid: 8adb2be24d97d4094bdf8f02f3f3d762, type: 3}
+  - {fileID: -4684103065784172266, guid: d7f7eb9f31dc4465cba4241619d6d34a, type: 3}
+  - {fileID: -7853896402066509807, guid: 5974f5a4cad834bfe9f871c8a4ee3cbd, type: 3}
+  - {fileID: -6711613766056464726, guid: 8adb2be24d97d4094bdf8f02f3f3d762, type: 3}
+  - {fileID: -6711613766056464726, guid: 2d5513c0308264143b58b17b408e4a0d, type: 3}
   itemRoot: {fileID: 0}
   showGizmos: 1
   gizmoColor: {r: 0, g: 1, b: 0, a: 0.5}
