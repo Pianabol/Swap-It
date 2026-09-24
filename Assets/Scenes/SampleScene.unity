@@ -797,6 +797,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LevelManager
   board: {fileID: 386929790}
   itemPool: {fileID: 450285859}
+  currentLevel: {fileID: 11400000, guid: 7a55bcf7549fd44adb9562f4c98d2913, type: 2}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

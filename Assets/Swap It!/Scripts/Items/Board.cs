@@ -20,6 +20,7 @@ public class Board : MonoBehaviour
     private BoxCollider boardCollider;
     private Item[,] gridItems;
 
+    private CellType[,] cellTypes; // Zemin topolojisini tutacak array
     private bool hasSelection = false;
     private bool isResolving = false; // Tıklamaları kilitlemek için
 
@@ -36,8 +37,9 @@ public class Board : MonoBehaviour
 
     private void Awake()
     {
-        InitializeCollider();
-        gridItems = new Item[width, height];
+        //şimdilik bi kapalı:
+        //InitializeCollider();
+        //gridItems = new Item[width, height];
 
         if (itemRoot == null)
         {
@@ -61,6 +63,52 @@ public class Board : MonoBehaviour
         }
     }
 
+    public void InitializeBoard(LevelData levelData)
+    {
+        // 1. Boyutları Data'dan çek
+        this.width = levelData.width;
+        this.height = levelData.height;
+
+        // 2. Array'leri boyutlandır
+        gridItems = new Item[width, height];
+        cellTypes = new CellType[width, height];
+
+        // 3. Data'daki topolojiyi (Void, Normal, Obstacle) kendi array'imize kopyala
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                // LevelData içindeki layout, List<Row> şeklinde tutuluyor.
+                // Y=0 en alt satır olduğu için doğrudan okuyabiliriz.
+                // Güvenlik kontrolü (Eğer tasarımcı Layout'u bozmuşsa varsayılan Normal yap)
+                if (y < levelData.layout.Count && x < levelData.layout[y].columns.Length)
+                {
+                    cellTypes[x, y] = levelData.layout[y].columns[x];
+                }
+                else
+                {
+                    cellTypes[x, y] = CellType.Normal; 
+                }
+            }
+        }
+
+        // 4. Collider'ı yeni boyutlara göre ayarla
+        InitializeCollider();
+        
+        Debug.Log($"<color=green>[BOARD]</color> Tahta {width}x{height} boyutlarında topolojiye göre inşa edildi.");
+    }
+
+
+    public bool IsCellPlayable(int x, int y)
+    {
+        // Grid sınırları dışındaysa veya o hücre VOID (Delik) ise oynanamaz!
+        if (!IsValidCoordinate(x, y)) return false;
+        if (cellTypes[x, y] == CellType.Void) return false;
+        
+        return true;
+    }
+
+#region Grid Coordinate Conversion
     public Vector2Int WorldToGrid(Vector3 worldPosition)
     {
         Vector3 localPosition = transform.InverseTransformPoint(worldPosition);
@@ -99,10 +147,23 @@ public class Board : MonoBehaviour
         if (!IsValidCoordinate(x, y)) return null;
         return gridItems[x, y];
     }
+#endregion
 
+
+#region Cell Interaction
     public void OnCellClicked(int x, int y)
     {
         if (isResolving) return; // Oyun beklemedeyse tıklamayı yoksay
+
+        //Yeni kilit (void hücreler için)
+        if (!IsCellPlayable(x, y))
+        {
+            Debug.Log("<color=grey>[INVALID]</color> Burası bir boşluk (Void), etkileşime girilemez!");
+            
+            // Eğer elimizde seçili bir blok varken Void'e tıkladıysa, seçimi iptal edelim ki oyun kilitli hissettirmesin
+            if (hasSelection) DeselectCurrent(); 
+            return;
+        }
 
         if (!hasSelection)
         {
@@ -157,6 +218,9 @@ public class Board : MonoBehaviour
 
         hasSelection = false;
     }
+#endregion
+
+#region Match Detection and Resolution
 
     public void CheckAndResolveMatches()
     {
@@ -250,18 +314,26 @@ public class Board : MonoBehaviour
         {
             for (int y = 0; y < height; y++)
             {
+                // Bu hücre Void mi?
+                if (!IsCellPlayable(x, y)) continue;
+
+                // Hücre oynanabilir ve BOŞ ise, üstünde onu dolduracak bir blok arayalım
                 if (gridItems[x, y] == null)
                 {
                     for (int searchY = y + 1; searchY < height; searchY++)
                     {
+                        // YENİ KURAL 2: Yukarıda blok ararken, aradığımız o üst hücre de Void ise, orada blok yoktur. Atla ve daha yukarı bak!
+                        if (!IsCellPlayable(x, searchY)) continue;
+
                         if (gridItems[x, searchY] != null)
                         {
                             Item itemToMove = gridItems[x, searchY];
+                            
                             gridItems[x, y] = itemToMove;       
                             gridItems[x, searchY] = null;       
                             
-                            //itemToMove.transform.position = GridToWorld(x, y);
-
+                            // LeanTween ile pürüzsüzce aşağı kaydır
+                            // Görsel olarak bloklar Void'in (deliğin) üzerinden kayarak geçecek. 
                             LeanTween.move(itemToMove.gameObject, GridToWorld(x, y), 0.3f).setEaseOutQuad();
 
                             hasMovedAny = true;
@@ -274,9 +346,13 @@ public class Board : MonoBehaviour
 
         if (hasMovedAny)
         {
-            Debug.Log("<color=yellow>[GRAVITY]</color> Bloklar aşağı kaydırıldı.");
+            Debug.Log("<color=yellow>[GRAVITY]</color> Bloklar (delikler atlanarak) aşağı kaydırıldı.");
         }
+        
+        // İşlem bitti, LevelManager'a Refill (Yeniden Doldurma) sinyalini yolla
+        OnGravityFinished?.Invoke(); 
     }
+#endregion
 
     private void OnDrawGizmos()
     {
