@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections;
 using UnityEngine;
 
 [RequireComponent(typeof(BoxCollider))]
@@ -9,20 +10,25 @@ public class Board : MonoBehaviour
     [SerializeField, Min(1)] private int height = 10;
     [SerializeField, Min(0.1f)] private float cellSize = 1.0f;
 
-    [Header("Spawn Settings")]
-    [SerializeField] private Item[] itemPrefabs; // Artık Item sınıfı dizisi
-    [SerializeField] private Transform itemRoot; 
+    [Header("Hierarchy Settings")]
+    [SerializeField] private Transform itemRoot;
 
     [Header("Debug Settings")]
     [SerializeField] private bool showGizmos = true;
     [SerializeField] private Color gizmoColor = new Color(0, 1, 0, 0.5f);
 
     private BoxCollider boardCollider;
-    private Item[,] gridItems; // Mantıksal veri artık Item tipinde
+    private Item[,] gridItems;
 
     private bool hasSelection = false;
+    private bool isResolving = false; // Tıklamaları kilitlemek için
+
     private Vector2Int selectedGridPos;
     private float selectionLiftHeight = 0.5f;
+
+    public delegate void OnItemDestroyed(Item item);
+    public event OnItemDestroyed ItemDestroyedEvent;
+    public event System.Action OnGravityFinished;
 
     public int Width => width;
     public int Height => height;
@@ -78,18 +84,31 @@ public class Board : MonoBehaviour
         return x >= 0 && x < width && y >= 0 && y < height;
     }
 
+    public void PlaceItemAt(Item item, int x, int y)
+    {
+        if (item == null || !IsValidCoordinate(x, y)) return;
+
+        gridItems[x, y] = item;
+        item.transform.position = GridToWorld(x, y);
+        item.transform.rotation = Quaternion.identity;
+        item.transform.SetParent(itemRoot);
+    }
+
+    public Item GetItemAt(int x, int y)
+    {
+        if (!IsValidCoordinate(x, y)) return null;
+        return gridItems[x, y];
+    }
+
     public void OnCellClicked(int x, int y)
     {
+        if (isResolving) return; // Oyun beklemedeyse tıklamayı yoksay
+
         if (!hasSelection)
         {
             if (gridItems[x, y] != null)
             {
                 SelectCell(x, y);
-            }
-            else
-            {
-                SpawnItemAt(x, y);
-                CheckAndResolveMatches(); // Spawn sonrası hemen eşleşme var mı bak
             }
         }
         else
@@ -101,7 +120,7 @@ public class Board : MonoBehaviour
             else
             {
                 SwapItems(selectedGridPos.x, selectedGridPos.y, x, y);
-                CheckAndResolveMatches(); // Yer değiştirme sonrası eşleşme var mı bak
+                CheckAndResolveMatches();
             }
         }
     }
@@ -110,25 +129,19 @@ public class Board : MonoBehaviour
     {
         selectedGridPos = new Vector2Int(x, y);
         hasSelection = true;
-
         Item selectedItem = gridItems[x, y];
         selectedItem.transform.position += Vector3.up * selectionLiftHeight;
-
-        Debug.Log($"<color=magenta>[SELECTED]</color> [{x}, {y}] seçildi.");
     }
 
     private void DeselectCurrent()
     {
         if (!hasSelection) return;
-
         Item selectedItem = gridItems[selectedGridPos.x, selectedGridPos.y];
         if (selectedItem != null)
         {
             selectedItem.transform.position = GridToWorld(selectedGridPos.x, selectedGridPos.y);
         }
-
         hasSelection = false;
-        Debug.Log("<color=grey>[DESELECTED]</color> Seçim iptal edildi.");
     }
 
     private void SwapItems(int x1, int y1, int x2, int y2)
@@ -143,28 +156,12 @@ public class Board : MonoBehaviour
         if (item2 != null) item2.transform.position = GridToWorld(x1, y1);
 
         hasSelection = false;
-        Debug.Log($"<color=yellow>[SWAP]</color> [{x1}, {y1}] ile [{x2}, {y2}] yer değiştirdi!");
     }
 
-    private void SpawnItemAt(int x, int y)
-    {
-        if (itemPrefabs == null || itemPrefabs.Length == 0) return;
-
-        int randomIndex = Random.Range(0, itemPrefabs.Length);
-        Item selectedPrefab = itemPrefabs[randomIndex];
-        Vector3 spawnPosition = GridToWorld(x, y);
-        Item newItem = Instantiate(selectedPrefab, spawnPosition, Quaternion.identity, itemRoot);
-        
-        gridItems[x, y] = newItem;
-        Debug.Log($"<color=green>[SPAWNED]</color> [{x}, {y}] konumuna {newItem.name} eklendi.");
-    }
-
-    // --- EŞLEŞME (MATCH) ALGORİTMASI ---
     public void CheckAndResolveMatches()
     {
         HashSet<Vector2Int> matchedCoords = new HashSet<Vector2Int>();
 
-        // 1. Yatay Taramalar (Horizontal: Sol -> Sağ)
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width - 2; x++)
@@ -175,19 +172,15 @@ public class Board : MonoBehaviour
                 Item next1 = gridItems[x + 1, y];
                 Item next2 = gridItems[x + 2, y];
 
-                if (next1 != null && next2 != null)
+                if (next1 != null && next2 != null && current.ItemType == next1.ItemType && current.ItemType == next2.ItemType)
                 {
-                    if (current.ItemType == next1.ItemType && current.ItemType == next2.ItemType)
-                    {
-                        matchedCoords.Add(new Vector2Int(x, y));
-                        matchedCoords.Add(new Vector2Int(x + 1, y));
-                        matchedCoords.Add(new Vector2Int(x + 2, y));
-                    }
+                    matchedCoords.Add(new Vector2Int(x, y));
+                    matchedCoords.Add(new Vector2Int(x + 1, y));
+                    matchedCoords.Add(new Vector2Int(x + 2, y));
                 }
             }
         }
 
-        // 2. Dikey Taramalar (Vertical: Aşağı -> Yukarı)
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height - 2; y++)
@@ -198,32 +191,90 @@ public class Board : MonoBehaviour
                 Item next1 = gridItems[x, y + 1];
                 Item next2 = gridItems[x, y + 2];
 
-                if (next1 != null && next2 != null)
+                if (next1 != null && next2 != null && current.ItemType == next1.ItemType && current.ItemType == next2.ItemType)
                 {
-                    if (current.ItemType == next1.ItemType && current.ItemType == next2.ItemType)
+                    matchedCoords.Add(new Vector2Int(x, y));
+                    matchedCoords.Add(new Vector2Int(x, y + 1));
+                    matchedCoords.Add(new Vector2Int(x, y + 2));
+                }
+            }
+        }
+
+        if (matchedCoords.Count > 0)
+        {
+            StartCoroutine(ResolveMatchesRoutine(matchedCoords));
+        }
+        else
+        {
+            isResolving = false;
+        }
+    }
+
+    private IEnumerator ResolveMatchesRoutine(HashSet<Vector2Int> matchedCoords)
+    {
+        isResolving = true; 
+        
+        Debug.Log($"<color=orange>[DEBUG DELAY]</color> Toplam {matchedCoords.Count} blok eşleşti. Havaya kalkıyor, 3 saniye bekle...");
+
+        foreach (Vector2Int coord in matchedCoords)
+        {
+            Item item = gridItems[coord.x, coord.y];
+            if (item != null)
+            {
+                item.transform.position += Vector3.up * selectionLiftHeight; 
+            }
+        }
+
+        yield return new WaitForSeconds(3f);
+
+        foreach (Vector2Int coord in matchedCoords)
+        {
+            Item itemToDestroy = gridItems[coord.x, coord.y];
+            if (itemToDestroy != null)
+            {
+                ItemDestroyedEvent?.Invoke(itemToDestroy);
+                gridItems[coord.x, coord.y] = null;
+            }
+        }
+
+        ApplyGravity();
+
+        OnGravityFinished?.Invoke(); // Fabrika Müdürüne (LevelManager) gidecek sinyal
+    }
+
+    public void ApplyGravity()
+    {
+        bool hasMovedAny = false;
+
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                if (gridItems[x, y] == null)
+                {
+                    for (int searchY = y + 1; searchY < height; searchY++)
                     {
-                        matchedCoords.Add(new Vector2Int(x, y));
-                        matchedCoords.Add(new Vector2Int(x, y + 1));
-                        matchedCoords.Add(new Vector2Int(x, y + 2));
+                        if (gridItems[x, searchY] != null)
+                        {
+                            Item itemToMove = gridItems[x, searchY];
+                            gridItems[x, y] = itemToMove;       
+                            gridItems[x, searchY] = null;       
+                            
+                            //itemToMove.transform.position = GridToWorld(x, y);
+
+                            LeanTween.move(itemToMove.gameObject, GridToWorld(x, y), 0.3f).setEaseOutQuad();
+
+                            hasMovedAny = true;
+                            break; 
+                        }
                     }
                 }
             }
         }
 
-        // 3. Eşleşenleri Yok Et ve Grid'den Temizle
-        if (matchedCoords.Count > 0)
+        if (hasMovedAny)
         {
-            Debug.Log($"<color=red>[MATCH FOUND]</color> Toplam {matchedCoords.Count} blok patlatılıyor!");
-
-            foreach (Vector2Int coord in matchedCoords)
-            {
-                Item itemToDestroy = gridItems[coord.x, coord.y];
-                if (itemToDestroy != null)
-                {
-                    Destroy(itemToDestroy.gameObject);
-                    gridItems[coord.x, coord.y] = null; // Mantıksal diziyi boşalt
-                }
-            }
+            Debug.Log("<color=yellow>[GRAVITY]</color> Bloklar aşağı kaydırıldı.");
         }
     }
 
