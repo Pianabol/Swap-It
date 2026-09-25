@@ -1,27 +1,48 @@
 using UnityEngine;
 using System.Collections;
 
-public class LevelManager : MonoBehaviour
+public class LevelManager : MonoBehaviour, IGameStateListener
 {
+    public static LevelManager Instance { get; private set; }
+
     [Header("Core References")]
     [SerializeField] private Board board;
     [SerializeField] private ItemPool itemPool;
 
     [Header("Current Level")]
-    [SerializeField] private LevelData currentLevel; // Oynatılacak olan Scriptable
+    [SerializeField] private LevelData currentLevel; 
+    [SerializeField] private int currentLevelNum = 1;
+
+    public int CurrentLevelNum => currentLevelNum;
+    public LevelData CurrentLevel => currentLevel;
+
+    private void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
 
     private void OnEnable()
     {
+        GameManager.Instance?.RegisterListener(this);
+
         if (board != null)
         {
             board.ItemDestroyedEvent += OnItemDestroyedOnBoard;
-            // YENİ: Board'un Gravity sinyalini dinlemeye başla
             board.OnGravityFinished += RefillBoard; 
         }
     }
 
     private void OnDisable()
     {
+        GameManager.Instance?.UnregisterListener(this);
+
         if (board != null)
         {
             board.ItemDestroyedEvent -= OnItemDestroyedOnBoard;
@@ -29,17 +50,23 @@ public class LevelManager : MonoBehaviour
         }
     }
 
-    private void Start()
+    public void GameStateChangedCallBack(EGameState gameState)
+    {
+        if (gameState == EGameState.GAME)
+        {
+            LoadCurrentLevel();
+        }
+    }
+
+    private void LoadCurrentLevel()
     {
         if (currentLevel == null)
         {
-            Debug.LogError("LevelManager'a bir LevelData (Level_001.asset) atanmamış!");
+            Debug.LogError("[LEVEL MANAGER] LevelData atanmamış!");
             return;
         }
 
-        // 1. Board'a "Şu boyutlara ve topolojiye göre kendini inşa et" diyoruz.
         board.InitializeBoard(currentLevel);
-        // 2. levelı üret.
         GenerateLevel();
     }
 
@@ -49,14 +76,10 @@ public class LevelManager : MonoBehaviour
         {
             for (int y = 0; y < board.Height; y++)
             {
-                // EĞER HÜCRE OYNANABİLİR DEĞİLSE (Örn: Void/Delik ise) oraya blok SPAWN ETME!
                 if (!board.IsCellPlayable(x, y))
                 {
-                    continue; // Bu hücreyi es geç
+                    continue; 
                 }
-
-                // EĞER OBSTACLE İSE (Taş/Kasa vs. mekaniği için altyapı)
-                // Şimdilik sadece Normal hücrelere blok dizelim, Obstacle işini bir sonraki sefere bırakıyoruz.
 
                 Item safeItem = GetSafeItemForPosition(x, y);
                 board.PlaceItemAt(safeItem, x, y);
@@ -64,6 +87,7 @@ public class LevelManager : MonoBehaviour
         }
         Debug.Log("<color=cyan>[LEVEL MANAGER]</color> Level veriye göre dolduruldu.");
     }
+
     private Item GetSafeItemForPosition(int x, int y)
     {
         int maxAttempts = 100;
@@ -118,28 +142,23 @@ public class LevelManager : MonoBehaviour
         }
     }
 
-    // --- YENİ: DÜZELTİLMİŞ REFILL VE CASCADE MANTIĞI ---
     private void RefillBoard()
     {
-        // Animasyonların bitmesini bekleyebilmek için işlemi Coroutine'e devrediyoruz
         StartCoroutine(RefillRoutine());
     }
 
     private IEnumerator RefillRoutine()
     {
         bool refilledAny = false;
-        
-        // Her sütunda (X ekseninde) kaç tane yeni blok spawn ettiğimizi tutacağız.
         int[] spawnCounts = new int[board.Width]; 
 
         for (int x = 0; x < board.Width; x++)
         {
             for (int y = 0; y < board.Height; y++)
             {
-                // YENİ EKLENEN KONTROL: Sadece oynanabilir (Void olmayan) hücreleri doldur!
                 if (board.IsCellPlayable(x, y) && board.GetItemAt(x, y) == null)
                 {
-                    Item newItem = itemPool.GetRandomItem(); // İleride bunu currentLevel.allowedColors içinden seçeceğiz
+                    Item newItem = itemPool.GetRandomItem();
                     board.PlaceItemAt(newItem, x, y); 
 
                     float spawnY = board.Height + spawnCounts[x];
@@ -155,13 +174,7 @@ public class LevelManager : MonoBehaviour
 
         if (refilledAny)
         {
-            Debug.Log("<color=cyan>[REFILL]</color> Bloklar sırayla yağıyor, düşmeleri bekleniyor...");
-            
-            // Yeni gelen bloklar havadayken eşleşme (Cascade) kontrolü Y-A-P-I-L-M-A-Z!
-            // Animasyon süresi kadar (0.5 saniye) bekliyoruz ki bloklar yerine otursun.
             yield return new WaitForSeconds(0.5f);
-            
-            // Bloklar yerine oturdu. Şimdi zincirleme reaksiyon (Cascade) var mı kontrol et!
             board.CheckAndResolveMatches(); 
         }
     }

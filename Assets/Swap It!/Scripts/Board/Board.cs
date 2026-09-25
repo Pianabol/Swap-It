@@ -15,9 +15,10 @@ public class Board : MonoBehaviour
 
     [Header("Visual Settings")]
     [SerializeField] private GameObject tilePrefab;  
-    [SerializeField] private Transform tileRoot;    // Zeminleri düzenli tutmak  
+    [SerializeField] private Transform tileRoot;    
     [SerializeField] private GameObject borderPrefab; 
-    [SerializeField] private float borderThicknessOffset = 0.5f; // Çerçevenin hücrenin ne kadar kenarına  
+    [SerializeField] private float borderThicknessOffset = 0.5f; 
+    [SerializeField] private GameObject obstaclePrefab; // Inspector'dan atanacak Engel Prefabı
 
     [Header("Debug Settings")]
     [SerializeField] private bool showGizmos = true;
@@ -25,10 +26,11 @@ public class Board : MonoBehaviour
 
     private BoxCollider boardCollider;
     private Item[,] gridItems;
+    private CellType[,] cellTypes; 
+    private GameObject[,] obstacleObjects; // Sahnedeki engelleri referans tutan matris
 
-    private CellType[,] cellTypes; // Zemin topolojisini tutacak array
     private bool hasSelection = false;
-    private bool isResolving = false; // Tıklamaları kilitlemek için
+    private bool isResolving = false; 
 
     private Vector2Int selectedGridPos;
     private float selectionLiftHeight = 0.5f;
@@ -51,7 +53,6 @@ public class Board : MonoBehaviour
             itemRoot = rootObj.transform;
         }
 
-        // YENİ EKLENEN KISIM: Zemin hiyerarşisini oluştur
         if (tileRoot == null)
         {
             GameObject rootObj = new GameObject("TileRoot");
@@ -81,6 +82,7 @@ public class Board : MonoBehaviour
 
         gridItems = new Item[width, height];
         cellTypes = new CellType[width, height];
+        obstacleObjects = new GameObject[width, height]; // NullReference önlemi: Matris güvenle tahsis edildi
 
         if (tileRoot != null)
         {
@@ -90,7 +92,7 @@ public class Board : MonoBehaviour
             }
         }
 
-        // 1. AŞAMA: Önce haritanın tüm verisini eksiksiz hafızaya al
+        // 1. AŞAMA: Harita topolojisini hafızaya al
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
@@ -106,15 +108,16 @@ public class Board : MonoBehaviour
             }
         }
 
-        // 2. AŞAMA: Hafıza tamken zeminleri ve kenar çizgilerini çiz
+        // 2. AŞAMA: Zeminleri, kenar çizgilerini ve engelleri inşa et
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
+                // Void olmayan her yerin (Normal ve Obstacle) altına zemin döşenir
                 if (cellTypes[x, y] != CellType.Void && tilePrefab != null)
                 {
                     Vector3 tilePos = GridToWorld(x, y);
-                    tilePos.y = -0.508f; // Belirttiğin Tiles yüksekliği
+                    tilePos.y = -0.508f; 
                     Quaternion tileRot = Quaternion.Euler(90f, 0f, 0f);
                     
                     GameObject bgTile = Instantiate(tilePrefab, tilePos, tileRot, tileRoot);
@@ -122,23 +125,34 @@ public class Board : MonoBehaviour
 
                     float offset = cellSize / 2f; 
 
-                    if (!IsCellPlayable(x, y + 1)) 
+                    if (!HasBoardSurface(x, y + 1)) 
                         SpawnBorder(x, y, new Vector3(0, 0, offset), true);
                     
-                    if (!IsCellPlayable(x, y - 1)) 
+                    if (!HasBoardSurface(x, y - 1)) 
                         SpawnBorder(x, y, new Vector3(0, 0, -offset), true);
                     
-                    if (!IsCellPlayable(x + 1, y)) 
+                    if (!HasBoardSurface(x + 1, y)) 
                         SpawnBorder(x, y, new Vector3(offset, 0, 0), false);
                     
-                    if (!IsCellPlayable(x - 1, y)) 
+                    if (!HasBoardSurface(x - 1, y)) 
                         SpawnBorder(x, y, new Vector3(-offset, 0, 0), false);
+                }
+
+                // Obstacle hücrelerine engel objesini spawn et
+                if (cellTypes[x, y] == CellType.Obstacle && obstaclePrefab != null)
+                {
+                    Vector3 obsPos = GridToWorld(x, y);
+                    obsPos.y = 0f; // Blokların normal zemin yüksekliği
+
+                    GameObject obsObj = Instantiate(obstaclePrefab, obsPos, Quaternion.identity, tileRoot);
+                    obsObj.name = $"Obstacle_{x}_{y}";
+                    obstacleObjects[x, y] = obsObj;
                 }
             }
         }
 
         InitializeCollider();
-        Debug.Log($"<color=green>[BOARD]</color> Tahta {width}x{height} boyutlarında inşa edildi.");
+        Debug.Log($"<color=green>[BOARD]</color> Tahta {width}x{height} boyutlarında başarıyla inşa edildi.");
     }
 
     private void SpawnBorder(int x, int y, Vector3 offset, bool isHorizontal)
@@ -147,8 +161,7 @@ public class Board : MonoBehaviour
 
         Vector3 cellCenter = GridToWorld(x, y);
         Vector3 borderPos = cellCenter + offset;
-        
-        borderPos.y = 0.565f; // Belirttiğin Border yüksekliği
+        borderPos.y = 0.565f; 
 
         GameObject border = Instantiate(borderPrefab, borderPos, Quaternion.identity, tileRoot);
         border.name = $"Border_{x}_{y}";
@@ -165,9 +178,6 @@ public class Board : MonoBehaviour
             border.transform.localScale = new Vector3(borderThickness, borderThickness, extendedLength);
         }
     }
-
-
-    
 
 #region Grid Coordinate Conversion
     public Vector2Int WorldToGrid(Vector3 worldPosition)
@@ -210,26 +220,33 @@ public class Board : MonoBehaviour
     }
 #endregion
 
-
 #region Cell Interaction
-   
-   public bool IsCellPlayable(int x, int y)
+    public bool IsCellPlayable(int x, int y)
     {
-        // Grid sınırları dışındaysa veya o hücre VOID (Delik) ise oynanamaz!
         if (!IsValidCoordinate(x, y)) return false;
-        if (cellTypes[x, y] == CellType.Void) return false;
+        
+        // Void VEYA Obstacle olan hücreler oynanamaz (üzerine blok düşemez / seçilemez)
+        if (cellTypes[x, y] == CellType.Void || cellTypes[x, y] == CellType.Obstacle) 
+            return false;
         
         return true;
     }
-   public void OnCellClicked(int x, int y)
-    {
-        if (isResolving) return; // Oyun beklemedeyse tıklamayı yoksay
 
-        //Yeni kilit (void hücreler için)
+    private bool HasBoardSurface(int x, int y)
+    {
+        if (!IsValidCoordinate(x, y)) return false; // Sınır dışıysa zemin yoktur
+        if (cellTypes[x, y] == CellType.Void) return false; // Sadece Void ise zemin yoktur
+        
+        return true; // Normal ve Obstacle hücrelerinin zemini vardır
+    }
+
+    public void OnCellClicked(int x, int y)
+    {
+        if (isResolving) return; 
+
         if (!IsCellPlayable(x, y))
         {
-            Debug.Log("<color=grey>[INVALID]</color> Burası bir boşluk (Void), etkileşime girilemez!");
-            
+            Debug.Log("<color=grey>[INVALID]</color> Oynanamaz hücre (Void veya Obstacle).");
             if (hasSelection) DeselectCurrent(); 
             return;
         }
@@ -290,7 +307,6 @@ public class Board : MonoBehaviour
 #endregion
 
 #region Match Detection and Resolution
-
     public void CheckAndResolveMatches()
     {
         HashSet<Vector2Int> matchedCoords = new HashSet<Vector2Int>();
@@ -346,8 +362,6 @@ public class Board : MonoBehaviour
     private IEnumerator ResolveMatchesRoutine(HashSet<Vector2Int> matchedCoords)
     {
         isResolving = true; 
-        
-        Debug.Log($"<color=orange>[DEBUG DELAY]</color> Toplam {matchedCoords.Count} blok eşleşti. Havaya kalkıyor, 3 saniye bekle...");
 
         foreach (Vector2Int coord in matchedCoords)
         {
@@ -358,19 +372,46 @@ public class Board : MonoBehaviour
             }
         }
 
-        yield return new WaitForSeconds(3f);
+        yield return new WaitForSeconds(0.4f);
 
         foreach (Vector2Int coord in matchedCoords)
         {
-            Item itemToDestroy = gridItems[coord.x, coord.y];
+            int x = coord.x;
+            int y = coord.y;
+
+            Item itemToDestroy = gridItems[x, y];
             if (itemToDestroy != null)
             {
                 ItemDestroyedEvent?.Invoke(itemToDestroy);
-                gridItems[coord.x, coord.y] = null;
+                gridItems[x, y] = null;
+
+                // Komşu engellere hasar ver
+                DamageObstacleAt(x + 1, y);
+                DamageObstacleAt(x - 1, y);
+                DamageObstacleAt(x, y + 1);
+                DamageObstacleAt(x, y - 1);
             }
         }
 
         ApplyGravity();
+    }
+
+    private void DamageObstacleAt(int x, int y)
+    {
+        if (!IsValidCoordinate(x, y)) return;
+
+        if (cellTypes[x, y] == CellType.Obstacle)
+        {
+            if (obstacleObjects != null && obstacleObjects[x, y] != null)
+            {
+                Destroy(obstacleObjects[x, y]);
+                obstacleObjects[x, y] = null;
+            }
+
+            // Hücreyi normale çeviriyoruz; artık oynanabilir ve yerçekimi orayı doldurabilir
+            cellTypes[x, y] = CellType.Normal;
+            Debug.Log($"<color=orange>[OBSTACLE]</color> Engel kırıldı: ({x},{y}). Hücre normale döndü.");
+        }
     }
 
     public void ApplyGravity()
@@ -408,7 +449,7 @@ public class Board : MonoBehaviour
 
         if (hasMovedAny)
         {
-            Debug.Log("<color=yellow>[GRAVITY]</color> Bloklar (delikler atlanarak) aşağı kaydırıldı.");
+            Debug.Log("<color=yellow>[GRAVITY]</color> Bloklar kaydırıldı.");
         }
         
         OnGravityFinished?.Invoke(); 
