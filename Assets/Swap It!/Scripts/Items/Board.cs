@@ -76,15 +76,12 @@ public class Board : MonoBehaviour
 
     public void InitializeBoard(LevelData levelData)
     {
-        // 1. Boyutları Data'dan çek
         this.width = levelData.width;
         this.height = levelData.height;
 
-        // 2. Array'leri boyutlandır
         gridItems = new Item[width, height];
         cellTypes = new CellType[width, height];
 
-        // YENİ EKLENEN KISIM: Önceki zeminler varsa temizle (Level değiştirirken üst üste binmesin)
         if (tileRoot != null)
         {
             foreach (Transform child in tileRoot)
@@ -93,7 +90,7 @@ public class Board : MonoBehaviour
             }
         }
 
-        // 3. Data'daki topolojiyi kopyala ve Zeminleri Döşe
+        // 1. AŞAMA: Önce haritanın tüm verisini eksiksiz hafızaya al
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
@@ -106,54 +103,71 @@ public class Board : MonoBehaviour
                 {
                     cellTypes[x, y] = CellType.Normal; 
                 }
+            }
+        }
 
-                // YENİ EKLENEN KISIM: GÖRSEL ZEMİNİ DÖŞE!
+        // 2. AŞAMA: Hafıza tamken zeminleri ve kenar çizgilerini çiz
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
                 if (cellTypes[x, y] != CellType.Void && tilePrefab != null)
                 {
                     Vector3 tilePos = GridToWorld(x, y);
-                    tilePos.y = -0.508f; // Zemin yüksekliği
+                    tilePos.y = -0.508f; // Belirttiğin Tiles yüksekliği
                     Quaternion tileRot = Quaternion.Euler(90f, 0f, 0f);
                     
                     GameObject bgTile = Instantiate(tilePrefab, tilePos, tileRot, tileRoot);
                     bgTile.name = $"Tile_{x}_{y}";
 
-                    // --- YENİ EKLENEN: KENAR TESPİTİ (EDGE DETECTION) ---
                     float offset = cellSize / 2f; 
 
-                    // Üst komşu Void mi
                     if (!IsCellPlayable(x, y + 1)) 
-                        SpawnBorder(x, y, new Vector3(0, 0, offset), 0f);
+                        SpawnBorder(x, y, new Vector3(0, 0, offset), true);
                     
-                    //alt komşu Void mi
                     if (!IsCellPlayable(x, y - 1)) 
-                        SpawnBorder(x, y, new Vector3(0, 0, -offset), 180f);
+                        SpawnBorder(x, y, new Vector3(0, 0, -offset), true);
                     
-                    // Sağ komşu Void mi
                     if (!IsCellPlayable(x + 1, y)) 
-                        SpawnBorder(x, y, new Vector3(offset, 0, 0), -90f);
+                        SpawnBorder(x, y, new Vector3(offset, 0, 0), false);
                     
-                    // Sol komşu Void mi ki
                     if (!IsCellPlayable(x - 1, y)) 
-                        SpawnBorder(x, y, new Vector3(-offset, 0, 0), 90f);
+                        SpawnBorder(x, y, new Vector3(-offset, 0, 0), false);
                 }
             }
         }
 
-        // 4. Collider'ı yeni boyutlara göre ayarla
         InitializeCollider();
-        
-        Debug.Log($"<color=green>[BOARD]</color> Tahta {width}x{height} boyutlarında topolojiye göre inşa edildi ve zeminler döşendi.");
+        Debug.Log($"<color=green>[BOARD]</color> Tahta {width}x{height} boyutlarında inşa edildi.");
     }
 
-
-    public bool IsCellPlayable(int x, int y)
+    private void SpawnBorder(int x, int y, Vector3 offset, bool isHorizontal)
     {
-        // Grid sınırları dışındaysa veya o hücre VOID (Delik) ise oynanamaz!
-        if (!IsValidCoordinate(x, y)) return false;
-        if (cellTypes[x, y] == CellType.Void) return false;
+        if (borderPrefab == null) return;
+
+        Vector3 cellCenter = GridToWorld(x, y);
+        Vector3 borderPos = cellCenter + offset;
         
-        return true;
+        borderPos.y = 0.565f; // Belirttiğin Border yüksekliği
+
+        GameObject border = Instantiate(borderPrefab, borderPos, Quaternion.identity, tileRoot);
+        border.name = $"Border_{x}_{y}";
+
+        float borderThickness = 0.1f; 
+        float extendedLength = cellSize + borderThickness; 
+
+        if (isHorizontal)
+        {
+            border.transform.localScale = new Vector3(extendedLength, borderThickness, borderThickness);
+        }
+        else
+        {
+            border.transform.localScale = new Vector3(borderThickness, borderThickness, extendedLength);
+        }
     }
+
+
+    
 
 #region Grid Coordinate Conversion
     public Vector2Int WorldToGrid(Vector3 worldPosition)
@@ -198,7 +212,16 @@ public class Board : MonoBehaviour
 
 
 #region Cell Interaction
-    public void OnCellClicked(int x, int y)
+   
+   public bool IsCellPlayable(int x, int y)
+    {
+        // Grid sınırları dışındaysa veya o hücre VOID (Delik) ise oynanamaz!
+        if (!IsValidCoordinate(x, y)) return false;
+        if (cellTypes[x, y] == CellType.Void) return false;
+        
+        return true;
+    }
+   public void OnCellClicked(int x, int y)
     {
         if (isResolving) return; // Oyun beklemedeyse tıklamayı yoksay
 
@@ -391,26 +414,6 @@ public class Board : MonoBehaviour
         OnGravityFinished?.Invoke(); 
     }
 #endregion
-
-    private void SpawnBorder(int x, int y, Vector3 offset, float zRotation)
-    {
-        if (borderPrefab == null) return;
-
-        // Hücrenin merkez koordinatını al
-        Vector3 cellCenter = GridToWorld(x, y);
-        
-        // Çerçeveyi kenara it (Örn: cellSize 1 ise, 0.5 birim yukarı itmek için)
-        Vector3 borderPos = cellCenter + offset;
-        
-        // Z ekseninde (derinlik) zeminin biraz üstünde dursun ki net gözüksün
-        borderPos.y = 0.51f; // Zemini 0.5f yapmıştık, bu bir tık üstünde dursun
-        
-        // Rotasyonu ayarla (Yere paralel olması için X=90, kenara dönmesi için Z=zRotation)
-        Quaternion borderRot = Quaternion.Euler(90f, 0f, zRotation);
-        
-        GameObject border = Instantiate(borderPrefab, borderPos, borderRot, tileRoot);
-        border.name = $"Border_{x}_{y}";
-    }
 
     private void OnDrawGizmos()
     {
