@@ -13,6 +13,12 @@ public class Board : MonoBehaviour
     [Header("Hierarchy Settings")]
     [SerializeField] private Transform itemRoot;
 
+    [Header("Visual Settings")]
+    [SerializeField] private GameObject tilePrefab;  
+    [SerializeField] private Transform tileRoot;    // Zeminleri düzenli tutmak  
+    [SerializeField] private GameObject borderPrefab; 
+    [SerializeField] private float borderThicknessOffset = 0.5f; // Çerçevenin hücrenin ne kadar kenarına  
+
     [Header("Debug Settings")]
     [SerializeField] private bool showGizmos = true;
     [SerializeField] private Color gizmoColor = new Color(0, 1, 0, 0.5f);
@@ -37,16 +43,21 @@ public class Board : MonoBehaviour
 
     private void Awake()
     {
-        //şimdilik bi kapalı:
-        //InitializeCollider();
-        //gridItems = new Item[width, height];
-
         if (itemRoot == null)
         {
             GameObject rootObj = new GameObject("ItemRoot");
             rootObj.transform.SetParent(this.transform);
             rootObj.transform.localPosition = Vector3.zero;
             itemRoot = rootObj.transform;
+        }
+
+        // YENİ EKLENEN KISIM: Zemin hiyerarşisini oluştur
+        if (tileRoot == null)
+        {
+            GameObject rootObj = new GameObject("TileRoot");
+            rootObj.transform.SetParent(this.transform);
+            rootObj.transform.localPosition = Vector3.zero;
+            tileRoot = rootObj.transform;
         }
     }
 
@@ -73,14 +84,20 @@ public class Board : MonoBehaviour
         gridItems = new Item[width, height];
         cellTypes = new CellType[width, height];
 
-        // 3. Data'daki topolojiyi (Void, Normal, Obstacle) kendi array'imize kopyala
+        // YENİ EKLENEN KISIM: Önceki zeminler varsa temizle (Level değiştirirken üst üste binmesin)
+        if (tileRoot != null)
+        {
+            foreach (Transform child in tileRoot)
+            {
+                Destroy(child.gameObject);
+            }
+        }
+
+        // 3. Data'daki topolojiyi kopyala ve Zeminleri Döşe
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
-                // LevelData içindeki layout, List<Row> şeklinde tutuluyor.
-                // Y=0 en alt satır olduğu için doğrudan okuyabiliriz.
-                // Güvenlik kontrolü (Eğer tasarımcı Layout'u bozmuşsa varsayılan Normal yap)
                 if (y < levelData.layout.Count && x < levelData.layout[y].columns.Length)
                 {
                     cellTypes[x, y] = levelData.layout[y].columns[x];
@@ -89,13 +106,43 @@ public class Board : MonoBehaviour
                 {
                     cellTypes[x, y] = CellType.Normal; 
                 }
+
+                // YENİ EKLENEN KISIM: GÖRSEL ZEMİNİ DÖŞE!
+                if (cellTypes[x, y] != CellType.Void && tilePrefab != null)
+                {
+                    Vector3 tilePos = GridToWorld(x, y);
+                    tilePos.y = -0.508f; // Zemin yüksekliği
+                    Quaternion tileRot = Quaternion.Euler(90f, 0f, 0f);
+                    
+                    GameObject bgTile = Instantiate(tilePrefab, tilePos, tileRot, tileRoot);
+                    bgTile.name = $"Tile_{x}_{y}";
+
+                    // --- YENİ EKLENEN: KENAR TESPİTİ (EDGE DETECTION) ---
+                    float offset = cellSize / 2f; 
+
+                    // Üst komşu Void mi
+                    if (!IsCellPlayable(x, y + 1)) 
+                        SpawnBorder(x, y, new Vector3(0, 0, offset), 0f);
+                    
+                    //alt komşu Void mi
+                    if (!IsCellPlayable(x, y - 1)) 
+                        SpawnBorder(x, y, new Vector3(0, 0, -offset), 180f);
+                    
+                    // Sağ komşu Void mi
+                    if (!IsCellPlayable(x + 1, y)) 
+                        SpawnBorder(x, y, new Vector3(offset, 0, 0), -90f);
+                    
+                    // Sol komşu Void mi ki
+                    if (!IsCellPlayable(x - 1, y)) 
+                        SpawnBorder(x, y, new Vector3(-offset, 0, 0), 90f);
+                }
             }
         }
 
         // 4. Collider'ı yeni boyutlara göre ayarla
         InitializeCollider();
         
-        Debug.Log($"<color=green>[BOARD]</color> Tahta {width}x{height} boyutlarında topolojiye göre inşa edildi.");
+        Debug.Log($"<color=green>[BOARD]</color> Tahta {width}x{height} boyutlarında topolojiye göre inşa edildi ve zeminler döşendi.");
     }
 
 
@@ -160,7 +207,6 @@ public class Board : MonoBehaviour
         {
             Debug.Log("<color=grey>[INVALID]</color> Burası bir boşluk (Void), etkileşime girilemez!");
             
-            // Eğer elimizde seçili bir blok varken Void'e tıkladıysa, seçimi iptal edelim ki oyun kilitli hissettirmesin
             if (hasSelection) DeselectCurrent(); 
             return;
         }
@@ -302,8 +348,6 @@ public class Board : MonoBehaviour
         }
 
         ApplyGravity();
-
-        OnGravityFinished?.Invoke(); // Fabrika Müdürüne (LevelManager) gidecek sinyal
     }
 
     public void ApplyGravity()
@@ -314,15 +358,12 @@ public class Board : MonoBehaviour
         {
             for (int y = 0; y < height; y++)
             {
-                // Bu hücre Void mi?
                 if (!IsCellPlayable(x, y)) continue;
 
-                // Hücre oynanabilir ve BOŞ ise, üstünde onu dolduracak bir blok arayalım
                 if (gridItems[x, y] == null)
                 {
                     for (int searchY = y + 1; searchY < height; searchY++)
                     {
-                        // YENİ KURAL 2: Yukarıda blok ararken, aradığımız o üst hücre de Void ise, orada blok yoktur. Atla ve daha yukarı bak!
                         if (!IsCellPlayable(x, searchY)) continue;
 
                         if (gridItems[x, searchY] != null)
@@ -332,8 +373,6 @@ public class Board : MonoBehaviour
                             gridItems[x, y] = itemToMove;       
                             gridItems[x, searchY] = null;       
                             
-                            // LeanTween ile pürüzsüzce aşağı kaydır
-                            // Görsel olarak bloklar Void'in (deliğin) üzerinden kayarak geçecek. 
                             LeanTween.move(itemToMove.gameObject, GridToWorld(x, y), 0.3f).setEaseOutQuad();
 
                             hasMovedAny = true;
@@ -349,10 +388,29 @@ public class Board : MonoBehaviour
             Debug.Log("<color=yellow>[GRAVITY]</color> Bloklar (delikler atlanarak) aşağı kaydırıldı.");
         }
         
-        // İşlem bitti, LevelManager'a Refill (Yeniden Doldurma) sinyalini yolla
         OnGravityFinished?.Invoke(); 
     }
 #endregion
+
+    private void SpawnBorder(int x, int y, Vector3 offset, float zRotation)
+    {
+        if (borderPrefab == null) return;
+
+        // Hücrenin merkez koordinatını al
+        Vector3 cellCenter = GridToWorld(x, y);
+        
+        // Çerçeveyi kenara it (Örn: cellSize 1 ise, 0.5 birim yukarı itmek için)
+        Vector3 borderPos = cellCenter + offset;
+        
+        // Z ekseninde (derinlik) zeminin biraz üstünde dursun ki net gözüksün
+        borderPos.y = 0.51f; // Zemini 0.5f yapmıştık, bu bir tık üstünde dursun
+        
+        // Rotasyonu ayarla (Yere paralel olması için X=90, kenara dönmesi için Z=zRotation)
+        Quaternion borderRot = Quaternion.Euler(90f, 0f, zRotation);
+        
+        GameObject border = Instantiate(borderPrefab, borderPos, borderRot, tileRoot);
+        border.name = $"Border_{x}_{y}";
+    }
 
     private void OnDrawGizmos()
     {
