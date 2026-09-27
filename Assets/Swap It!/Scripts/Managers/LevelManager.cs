@@ -70,6 +70,12 @@ public class LevelManager : MonoBehaviour, IGameStateListener
 
         board.InitializeBoard(currentLevel);
         GenerateLevel();
+
+        // YENİ: Tahta ve rünler dizildikten sonra kamerayı otomatik ortala ve zoomla
+        if (CameraManager.Instance != null)
+        {
+            CameraManager.Instance.FrameBoard(board);
+        }
     }
 
     private void GenerateLevel()

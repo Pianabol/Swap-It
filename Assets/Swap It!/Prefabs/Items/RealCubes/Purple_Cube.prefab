@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 7378369027121031483}
   - component: {fileID: 1656571149911708572}
   - component: {fileID: 6364461015282475858}
+  - component: {fileID: -8808625074857222520}
   m_Layer: 0
   m_Name: Purple_Cube
   m_TagString: Untagged
@@ -90,3 +91,16 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &-8808625074857222520
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4225473779755416230}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 112e57c18079741ce97934e125d9061c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Item
+  itemType: 0
