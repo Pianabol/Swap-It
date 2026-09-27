@@ -16,12 +16,14 @@ public class UIManager : MonoBehaviour, IGameStateListener
     [Tooltip("Sadece yazıyı değiştirmek için Text referansı")]
     [SerializeField] private TextMeshProUGUI levelPopupText;
 
-    private void OnEnable()
+    // YENİ: OnEnable yerine Start kullanıyoruz. (GameManager.Awake kesin bittikten sonra)
+    private void Start()
     {
         GameManager.Instance?.RegisterListener(this);
     }
 
-    private void OnDisable()
+    // YENİ: OnDisable yerine OnDestroy kullanıyoruz ki obje kapatılsa bile listeden düşmesin, tamamen silinince düşsün.
+    private void OnDestroy()
     {
         GameManager.Instance?.UnregisterListener(this);
     }

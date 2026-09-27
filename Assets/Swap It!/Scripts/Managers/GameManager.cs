@@ -40,6 +40,7 @@ public class GameManager : MonoBehaviour
         if (!listeners.Contains(listener))
         {
             listeners.Add(listener);
+            // Kayıt olan dinleyiciye anlık durumu hemen bildiriyoruz (Senkronizasyon garantisi)
             listener.GameStateChangedCallBack(gameState);
         }
     }
@@ -55,6 +56,7 @@ public class GameManager : MonoBehaviour
 
     public void SetGameState(EGameState newState)
     {
+        // Aynı state'e geçişi engelle (Time.frameCount ilk frame'de tetiklenmesine izin verir)
         if (gameState == newState && Time.frameCount > 0) return;
 
         gameState = newState;
@@ -78,7 +80,6 @@ public class GameManager : MonoBehaviour
 
     public void NextButtonCallBack()
     {
-        // Sonsuz döngü: Bir sonraki seviyeye geçerken sahneyi yeniler
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
@@ -88,6 +89,11 @@ public class GameManager : MonoBehaviour
     }
 
     public void RestartGameCallBack()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    public void HomeButtonCallBack()
     {
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }

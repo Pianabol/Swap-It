@@ -28,7 +28,8 @@ public class LevelManager : MonoBehaviour, IGameStateListener
         }
     }
 
-    private void OnEnable()
+    // YENİ: OnEnable yerine Start. Tüm referanslar güvenli bir şekilde Awake olduktan sonra kayıt ol.
+    private void Start()
     {
         GameManager.Instance?.RegisterListener(this);
 
@@ -39,7 +40,8 @@ public class LevelManager : MonoBehaviour, IGameStateListener
         }
     }
 
-    private void OnDisable()
+    // YENİ: OnDisable yerine OnDestroy. 
+    private void OnDestroy()
     {
         GameManager.Instance?.UnregisterListener(this);
 
