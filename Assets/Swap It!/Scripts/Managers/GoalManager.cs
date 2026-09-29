@@ -42,7 +42,6 @@ public class GoalManager : MonoBehaviour
 
     private void CheckGoalProgress(Item destroyedItem)
     {
-        if (isGameOver) return;
 
         ItemType type = destroyedItem.ItemType;
 
@@ -50,7 +49,6 @@ public class GoalManager : MonoBehaviour
         {
             activeGoals[type]--;
             OnGoalUpdated?.Invoke(type, activeGoals[type]);
-            CheckWinCondition();
         }
     }
 
@@ -60,26 +58,32 @@ public class GoalManager : MonoBehaviour
 
         remainingMoves--;
         OnMovesUpdated?.Invoke(remainingMoves);
-
-        if (remainingMoves <= 0)
-        {
-            CheckWinCondition(); 
-            if (!isGameOver) 
-            {
-                isGameOver = true;
-                OnLevelFailed?.Invoke();
-            }
-        }
     }
 
-    private void CheckWinCondition()
+    // YENİ HAKEM FONKSİYONU: Board.cs "Tahta duruldu" dediğinde tetiklenecek.
+    public void EvaluateGameState()
     {
+        if (isGameOver) return;
+
+        bool isWin = true;
         foreach (var count in activeGoals.Values)
         {
-            if (count > 0) return; 
+            if (count > 0) 
+            { 
+                isWin = false; 
+                break; 
+            }
         }
 
-        isGameOver = true;
-        OnLevelCompleted?.Invoke();
+        if (isWin)
+        {
+            isGameOver = true;
+            OnLevelCompleted?.Invoke();
+        }
+        else if (remainingMoves <= 0)
+        {
+            isGameOver = true;
+            OnLevelFailed?.Invoke();
+        }
     }
 }

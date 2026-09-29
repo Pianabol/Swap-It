@@ -5,72 +5,140 @@ public class CameraManager : MonoBehaviour
 {
     public static CameraManager Instance;
 
-    [Header("Zorunlu Kadraj Ayarları")]
-    [Tooltip("Çerçevelerin (Border) ekranın kenarına yapışmaması için fiziksel boşluk")]
-    public float padding = 2.0f; 
-    
-    [Tooltip("Üstte skor/hedef UI'ı varsa tahtayı aşağı kaydırmak için eksi değer gir")]
-    public float screenYOffset = -1.0f; 
+    [Header("Camera Settings")]
+    [SerializeField] private float screenYOffset = -1.0f;
+
+    [Tooltip("Board ekran genişliğinin yaklaşık ne kadarını kaplasın.")]
+    [SerializeField, Range(0.5f, 0.98f)]
+    private float screenFill = 0.88f;
+
+    [Header("Dynamic Camera Distance")]
+    [SerializeField] private float smallGridDistance = 15f;
+    [SerializeField] private float mediumGridDistance = 18f;
+    [SerializeField] private float largeGridDistance = 20f;
 
     private void Awake()
     {
         Instance = this;
     }
 
-    public void FrameBoard(Board board)
+    public void FrameBoard(Board board, int gridWidth, int gridHeight)
     {
-        // Çözünürlüğün ve objelerin sahnede tam oluşması için 1 kare (frame) bekletiyoruz.
-        StartCoroutine(ForceFrameRoutine(board));
+        StartCoroutine(
+            FrameRoutine(board, gridWidth, gridHeight)
+        );
     }
 
-    private IEnumerator ForceFrameRoutine(Board board)
+    private IEnumerator FrameRoutine(
+        Board board,
+        int gridWidth,
+        int gridHeight)
     {
         yield return new WaitForEndOfFrame();
 
         Camera cam = Camera.main;
-        if (cam == null || board == null) yield break;
 
-        // 1. ZORUNLU SINIR HESABI (TÜM OBJELERİ KAPSAR)
-        // Board'un altındaki Renderer'a (Mesh) sahip her şeyi (Border, Tile, Item) bul.
-        Renderer[] allRenderers = board.GetComponentsInChildren<Renderer>();
-        if (allRenderers.Length == 0) yield break;
+        if (cam == null || board == null)
+            yield break;
 
-        // İlk objenin sınırlarıyla bir kutu (Bounds) başlat
+        Renderer[] allRenderers =
+            board.GetComponentsInChildren<Renderer>();
+
+        if (allRenderers.Length == 0)
+            yield break;
+
+        // =====================================================
+        // 1. BOARD SINIRLARINI BUL
+        // =====================================================
+
         Bounds totalBounds = allRenderers[0].bounds;
-        
-        // Diğer tüm objeleri bu kutunun içine dahil et (Kutu giderek büyüyecek ve tüm board'u kaplayacak)
+
         foreach (Renderer r in allRenderers)
         {
             totalBounds.Encapsulate(r.bounds);
         }
 
-        // 2. KAMERAYI ZORLA MERKEZLE
+        // =====================================================
+        // 2. GRID BOYUTUNA GÖRE CAMERA DISTANCE
+        // =====================================================
+
+        float cameraDistance =
+            GetCameraDistance(gridWidth, gridHeight);
+
+        // =====================================================
+        // 3. ESKİ ÇALIŞAN ORTALAMA SİSTEMİ
+        // =====================================================
+
         Vector3 targetCenter = totalBounds.center;
 
-       
-        cam.transform.position = targetCenter - (cam.transform.forward * 20f);
+        cam.transform.position =
+            targetCenter -
+            (cam.transform.forward * cameraDistance);
 
-        // UI için Y ekseninde (Kameranın kendi yukarı yönünde) offset uygula
-        cam.transform.position += cam.transform.up * screenYOffset;
+        cam.transform.position +=
+            cam.transform.up * screenYOffset;
 
-        // 3. EKRAN TAŞMASINI ENGELLEYEN KESİN ZOOM (ORTHOGRAPHIC SIZE)
-        // Kapsayıcı kutunun X genişliği ve Z derinliği
-        float physicalWidth = totalBounds.size.x + padding;
-        float physicalLength = totalBounds.size.z + padding;
+        // =====================================================
+        // 4. ZOOM
+        // =====================================================
 
-        // Kameranın X açısına göre eğik derinliği (Apparent Height) hesaplıyoruz
-        float angleRad = cam.transform.eulerAngles.x * Mathf.Deg2Rad;
-        float apparentHeight = (physicalLength * Mathf.Sin(angleRad)) + (totalBounds.size.y * Mathf.Cos(angleRad));
+        float boardWorldWidth =
+            gridWidth * board.CellSize;
 
-        float screenAspect = (float)Screen.width / (float)Screen.height;
-        
-        // Cihazın ekranına göre gereken X ve Y zoom seviyeleri
-        float requiredSizeX = physicalWidth / 2f / screenAspect;
-        float requiredSizeY = apparentHeight / 2f;
+        float boardWorldHeight =
+            gridHeight * board.CellSize;
 
-        // Ekrandan asla taşmaması için büyük olan zoom değerini zorunlu kılıyoruz
-        cam.orthographicSize = Mathf.Max(requiredSizeX, requiredSizeY);
-        
-        Debug.Log($"<color=magenta>[CAMERA MANAGER]</color> Kadraj Zorlandı! Kapsanan Hacim: {totalBounds.size}. Tüm Border'lar ekran içinde.");
+        float aspect = cam.aspect;
+
+        float sizeFromWidth =
+            boardWorldWidth /
+            (2f * aspect * screenFill);
+
+        float angle =
+            cam.transform.eulerAngles.x *
+            Mathf.Deg2Rad;
+
+        float visibleHeight =
+            boardWorldHeight *
+            Mathf.Abs(Mathf.Sin(angle));
+
+        float sizeFromHeight =
+            visibleHeight /
+            (2f * screenFill);
+
+        cam.orthographicSize =
+            Mathf.Max(
+                sizeFromWidth,
+                sizeFromHeight
+            );
+
+        Debug.Log(
+            $"[CAMERA] Grid: {gridWidth}x{gridHeight} | " +
+            $"Distance: {cameraDistance:F1} | " +
+            $"Ortho: {cam.orthographicSize:F2}"
+        );
+    }
+
+    private float GetCameraDistance(
+        int gridWidth,
+        int gridHeight)
+    {
+        int largestDimension =
+            Mathf.Max(gridWidth, gridHeight);
+
+        // Örn: 6x6
+        if (largestDimension <= 6)
+        {
+            return smallGridDistance;
+        }
+
+        // Örn: 6x9, 7x8
+        if (largestDimension <= 9)
+        {
+            return mediumGridDistance;
+        }
+
+        // Örn: 8x10 ve daha büyük
+        return largeGridDistance;
     }
 }
