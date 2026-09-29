@@ -12,9 +12,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ec128079c81e7488aa350f861ffefbd7, type: 3}
   m_Name: Level_003
   m_EditorClassIdentifier: Assembly-CSharp::LevelData
+  levelNumber: 3
   width: 8
   height: 10
-  availableMoves: 20
+  maxMoves: 20
+  levelGoals:
+  - targetItemType: 0
+    targetAmount: 10
+  - targetItemType: 1
+    targetAmount: 12
+  - targetItemType: 2
+    targetAmount: 14
+  - targetItemType: 3
+    targetAmount: 15
   allowedColors: 00000000020000000100000003000000
   layout:
   - columns: 0000000000000000000000000000000000000000000000000000000000000000

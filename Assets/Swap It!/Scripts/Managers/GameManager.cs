@@ -32,6 +32,34 @@ public class GameManager : MonoBehaviour
     private void Start()
     {
         SetGameState(initialGameState);
+
+        if (GoalManager.Instance != null)
+        {
+            GoalManager.Instance.OnLevelFailed += TriggerGameOver;
+            GoalManager.Instance.OnLevelCompleted += TriggerLevelComplete;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (GoalManager.Instance != null)
+        {
+            GoalManager.Instance.OnLevelFailed -= TriggerGameOver;
+            GoalManager.Instance.OnLevelCompleted -= TriggerLevelComplete;
+        }
+    }
+
+
+    private void TriggerLevelComplete()
+    {
+        Debug.Log("<color=green>[GAME MANAGER] Hedefler Tamamlandı! LEVEL COMPLETED!</color>");
+        SetGameState(EGameState.LEVELCOMPLETE);
+    }
+
+    private void TriggerGameOver()
+    {
+        Debug.Log("<color=red>[GAME MANAGER] Hamle Bitti! GAME OVER!</color>");
+        SetGameState(EGameState.GAMEOVER);
     }
 
     #region Listener Registration (Observer Pattern)
@@ -40,7 +68,6 @@ public class GameManager : MonoBehaviour
         if (!listeners.Contains(listener))
         {
             listeners.Add(listener);
-            // Kayıt olan dinleyiciye anlık durumu hemen bildiriyoruz (Senkronizasyon garantisi)
             listener.GameStateChangedCallBack(gameState);
         }
     }
@@ -56,19 +83,16 @@ public class GameManager : MonoBehaviour
 
     public void SetGameState(EGameState newState)
     {
-        // Aynı state'e geçişi engelle (Time.frameCount ilk frame'de tetiklenmesine izin verir)
         if (gameState == newState && Time.frameCount > 0) return;
 
         gameState = newState;
         Debug.Log($"<color=magenta>[GAME STATE]</color> Durum değişti: <b>{gameState}</b>");
 
-        // Interface dinleyicilerini tetikle
         for (int i = listeners.Count - 1; i >= 0; i--)
         {
             listeners[i]?.GameStateChangedCallBack(gameState);
         }
 
-        // C# Event dinleyicilerini tetikle
         OnGameStateChanged?.Invoke(gameState);
     }
 

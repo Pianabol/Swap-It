@@ -267,6 +267,11 @@ public class Board : MonoBehaviour
             else
             {
                 SwapItems(selectedGridPos.x, selectedGridPos.y, x, y);
+
+                // count'ı düş
+
+                GoalManager.Instance?.DecreaseMove();
+                
                 CheckAndResolveMatches();
             }
         }

@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class LevelManager : MonoBehaviour, IGameStateListener
 {
@@ -9,18 +10,33 @@ public class LevelManager : MonoBehaviour, IGameStateListener
     [SerializeField] private Board board;
     [SerializeField] private ItemPool itemPool;
 
-    [Header("Current Level")]
-    [SerializeField] private LevelData currentLevel; 
-    [SerializeField] private int currentLevelNum = 1;
+    [Header("Levels Setup")]
+    [Tooltip("Oyundaki tüm levelleri sırasıyla buraya sürükle bırak.")]
+    [SerializeField] private List<LevelData> allLevels;
+    
+    // Arka planda tuttuğumuz, oyuncunun kaçıncı sırada olduğunu belirten indeks
+    private int currentLevelIndex = 0;
 
-    public int CurrentLevelNum => currentLevelNum;
-    public LevelData CurrentLevel => currentLevel;
+    // Arayüzlerin ve Board'un okuyacağı Aktif Level
+    public LevelData CurrentLevel => allLevels != null && allLevels.Count > 0 ? allLevels[currentLevelIndex] : null;
+    
+    // Aktif levelin kendi içindeki "Level Number" verisi (PopUp için)
+    public int CurrentLevelNum => CurrentLevel != null ? CurrentLevel.levelNumber : 0;
 
     private void Awake()
     {
         if (Instance == null)
         {
             Instance = this;
+            
+            currentLevelIndex = PlayerPrefs.GetInt("SavedLevelIndex", 0);
+            
+            if (allLevels != null && allLevels.Count > 0)
+            {
+                // Güvenlik: 
+                // hata vermesin diye Modulo (%) ile başa 
+                currentLevelIndex = currentLevelIndex % allLevels.Count;
+            }
         }
         else
         {
@@ -28,7 +44,6 @@ public class LevelManager : MonoBehaviour, IGameStateListener
         }
     }
 
-    // YENİ: OnEnable yerine Start. Tüm referanslar güvenli bir şekilde Awake olduktan sonra kayıt ol.
     private void Start()
     {
         GameManager.Instance?.RegisterListener(this);
@@ -38,9 +53,14 @@ public class LevelManager : MonoBehaviour, IGameStateListener
             board.ItemDestroyedEvent += OnItemDestroyedOnBoard;
             board.OnGravityFinished += RefillBoard; 
         }
+
+        // YENİ: Hedefler bittiğinde sıradaki levelin kilidini açmak için abone ol
+        if (GoalManager.Instance != null)
+        {
+            GoalManager.Instance.OnLevelCompleted += SaveNextLevelProgress;
+        }
     }
 
-    // YENİ: OnDisable yerine OnDestroy. 
     private void OnDestroy()
     {
         GameManager.Instance?.UnregisterListener(this);
@@ -50,6 +70,19 @@ public class LevelManager : MonoBehaviour, IGameStateListener
             board.ItemDestroyedEvent -= OnItemDestroyedOnBoard;
             board.OnGravityFinished -= RefillBoard; 
         }
+
+        if (GoalManager.Instance != null)
+        {
+            GoalManager.Instance.OnLevelCompleted -= SaveNextLevelProgress;
+        }
+    }
+
+    private void SaveNextLevelProgress()
+    {
+        int nextIndex = PlayerPrefs.GetInt("SavedLevelIndex", 0) + 1;
+        PlayerPrefs.SetInt("SavedLevelIndex", nextIndex);
+        PlayerPrefs.Save();
+        Debug.Log($"<color=cyan>[LEVEL MANAGER]</color> İlerleme kaydedildi! Sonraki level indeksi: {nextIndex}");
     }
 
     public void GameStateChangedCallBack(EGameState gameState)
@@ -62,20 +95,32 @@ public class LevelManager : MonoBehaviour, IGameStateListener
 
     private void LoadCurrentLevel()
     {
-        if (currentLevel == null)
+        if (CurrentLevel == null)
         {
-            Debug.LogError("[LEVEL MANAGER] LevelData atanmamış!");
+            Debug.LogError("[LEVEL MANAGER] Level listesi boş veya LevelData atanmamış!");
             return;
         }
 
-        board.InitializeBoard(currentLevel);
+        board.InitializeBoard(CurrentLevel);
         GenerateLevel();
 
-        // YENİ: Tahta ve rünler dizildikten sonra kamerayı otomatik ortala ve zoomla
+        if (GoalManager.Instance != null)
+        {
+            GoalManager.Instance.InitializeGoals(CurrentLevel.levelGoals, CurrentLevel.maxMoves, board);
+        }
+
         if (CameraManager.Instance != null)
         {
             CameraManager.Instance.FrameBoard(board);
         }
+
+        GoalUIManager uiManager = FindObjectOfType<GoalUIManager>();
+        if (uiManager != null)
+        {
+            uiManager.InitializeUI(CurrentLevel.levelGoals, CurrentLevel.maxMoves);
+        }
+        
+        Debug.Log($"<color=green>[LEVEL MANAGER]</color> Level {CurrentLevel.levelNumber} başarıyla yüklendi.");
     }
 
     private void GenerateLevel()
@@ -84,16 +129,12 @@ public class LevelManager : MonoBehaviour, IGameStateListener
         {
             for (int y = 0; y < board.Height; y++)
             {
-                if (!board.IsCellPlayable(x, y))
-                {
-                    continue; 
-                }
+                if (!board.IsCellPlayable(x, y)) continue; 
 
                 Item safeItem = GetSafeItemForPosition(x, y);
                 board.PlaceItemAt(safeItem, x, y);
             }
         }
-        Debug.Log("<color=cyan>[LEVEL MANAGER]</color> Level veriye göre dolduruldu.");
     }
 
     private Item GetSafeItemForPosition(int x, int y)
@@ -115,10 +156,7 @@ public class LevelManager : MonoBehaviour, IGameStateListener
 
         } while (newItem == null && attempts < maxAttempts);
 
-        if (attempts >= maxAttempts)
-        {
-            newItem = itemPool.GetRandomItem(); 
-        }
+        if (attempts >= maxAttempts) newItem = itemPool.GetRandomItem(); 
 
         return newItem;
     }
