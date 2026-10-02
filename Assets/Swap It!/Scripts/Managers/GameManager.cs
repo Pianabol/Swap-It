@@ -16,6 +16,7 @@ public class GameManager : MonoBehaviour
     public static event Action<EGameState> OnGameStateChanged;
 
     public EGameState CurrentState => gameState;
+    private static bool autoStartGame = false;
 
     private void Awake()
     {
@@ -31,10 +32,18 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        SetGameState(initialGameState);
-
-        if (GoalManager.Instance != null)
+        if (autoStartGame)
         {
+            autoStartGame = false; // Bayrağı sıfırla ki uygulamayı bir dahaki açışında menüden başlasın
+            SetGameState(EGameState.GAME);
+        }
+        else
+        {
+            SetGameState(initialGameState);
+        }
+
+        {
+        if (GoalManager.Instance != null)
             GoalManager.Instance.OnLevelFailed += TriggerGameOver;
             GoalManager.Instance.OnLevelCompleted += TriggerLevelComplete;
         }
@@ -49,16 +58,17 @@ public class GameManager : MonoBehaviour
         }
     }
 
-
     private void TriggerLevelComplete()
     {
         Debug.Log("<color=green>[GAME MANAGER] Hedefler Tamamlandı! LEVEL COMPLETED!</color>");
+        SoundManager.Instance?.PlayWin();
         SetGameState(EGameState.LEVELCOMPLETE);
     }
 
     private void TriggerGameOver()
     {
         Debug.Log("<color=red>[GAME MANAGER] Hamle Bitti! GAME OVER!</color>");
+        SoundManager.Instance?.PlayLose();
         SetGameState(EGameState.GAMEOVER);
     }
 
@@ -104,21 +114,25 @@ public class GameManager : MonoBehaviour
 
     public void NextButtonCallBack()
     {
+        autoStartGame = true; // YENİ: Sahne yüklenince direkt oyunu başlat
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     public void RetryButtonCallBack()
     {
+        autoStartGame = true; // YENİ: Sahne yüklenince direkt rövanşa başla
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     public void RestartGameCallBack()
     {
+        autoStartGame = true; 
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     public void HomeButtonCallBack()
     {
+        autoStartGame = false; // YENİ: Ana menüye güvenle dön
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 

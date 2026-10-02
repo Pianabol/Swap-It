@@ -67,6 +67,59 @@ ExportedObj/
 *.opendb
 *.VC.db
 
+# OS Generated Files (macOS & Windows)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDEs & Editors (VS Code, Visual Studio, Rider)
+.vscode/
+*.code-workspace
+.vs/
+.idea/
+ExportedObj/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity Generated Folders
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Mm]emoryCaptures/
+/[Uu]ser[Ss]ettings/
+
+# Unity Meta Files for ignored folders
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Builds (Mobile & Desktop)
+*.apk
+*.aab
+*.ipa
+*.exe
+*.app
+
 # Unity3D generated meta files
 *.pidb.meta
 *.pdb.meta

@@ -15,7 +15,7 @@ MonoBehaviour:
   levelNumber: 1
   width: 6
   height: 6
-  maxMoves: 15
+  maxMoves: 10
   levelGoals:
   - targetItemType: 0
     targetAmount: 10
